@@ -216,7 +216,7 @@ class Atem :
 
 if __name__ == '__main__':
     a = Atem()
-    a.connectToSwitcher (('193.107.127.199',9910))
+    a.connectToSwitcher (('193.107.127.xxx',9910))
     #while (True):   
     import time
     a.waitForPacket()
