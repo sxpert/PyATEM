@@ -45,22 +45,38 @@ class Atem:
     LABELS_PORTS_EXTERNAL = ['SDI', 'HDMI', 'Component', 'Composite', 'SVideo']
     LABELS_PORTS_INTERNAL = ['External', 'Black', 'Color Bars', 'Color Generator', 'Media Player Fill',
                              'Media Player Key', 'SuperSource']
-    LABELS_MULTIVIEWER_LAYOUT = ['Top', 'Bottom', 'Left', 'Right']
+    LABELS_MULTIVIEWER_LAYOUT = ['top', 'bottom', 'left', 'right']
+    LABELS_AUDIO_PLUG = ['Internal', 'SDI', 'HDMI', 'Component', 'Composite', 'SVideo', 'XLR', 'AES/EBU', 'RCA']
+    LABELS_VIDEOSRC = { 0: 'Black', 1: 'Input 1', 2: 'Input 2', 3: 'Input 3', 4: 'Input 4', 5: 'Input 5', 6: 'Input 6', 7: 'Input 7', 8: 'Input 8', 9: 'Input 9', 10: 'Input 10', 11: 'Input 11', 12: 'Input 12', 13: 'Input 13', 14: 'Input 14', 15: 'Input 15', 16: 'Input 16', 17: 'Input 17', 18: 'Input 18', 19: 'Input 19', 20: 'Input 20', 1000: 'Color Bars', 2001: 'Color 1', 2002: 'Color 2', 3010: 'Media Player 1', 3011: 'Media Player 1 Key', 3020: 'Media Player 2', 3021: 'Media Player 2 Key', 4010: 'Key 1 Mask', 4020: 'Key 2 Mask', 4030: 'Key 3 Mask', 4040: 'Key 4 Mask', 5010: 'DSK 1 Mask', 5020: 'DSK 2 Mask', 6000: 'Super Source', 7001: 'Clean Feed 1', 7002: 'Clean Feed 2', 8001: 'Auxilary 1', 8002: 'Auxilary 2', 8003: 'Auxilary 3', 8004: 'Auxilary 4', 8005: 'Auxilary 5', 8006: 'Auxilary 6', 10010: 'ME 1 Prog', 10011: 'ME 1 Prev', 10020: 'ME 2 Prog', 10021: 'ME 2 Prev' }
+    LABELS_AUDIOSRC = { 1: 'Input 1', 2: 'Input 2', 3: 'Input 3', 4: 'Input 4', 5: 'Input 5', 6: 'Input 6', 7: 'Input 7', 8: 'Input 8', 9: 'Input 9', 10: 'Input 10', 11: 'Input 11', 12: 'Input 12', 13: 'Input 13', 14: 'Input 14', 15: 'Input 15', 16: 'Input 16', 17: 'Input 17', 18: 'Input 18', 19: 'Input 19', 20: 'Input 20', 1001: 'XLR', 1101: 'AES/EBU', 1201: 'RCA', 2001: 'MP1', 2002: 'MP2' }
+    # cc
+    LABELS_CC_DOMAIN = ['lens', 'camera']
+    LABELS_CC_LENS_FEATURE = ['focus', 'auto_focused']
+    LABELS_CC_CAM_FEATURE = []
+    LABELS_CC_CHIP_FEATURE = ['lift', 'gamma', 'gain', 'aperture', 'contrast', 'luminance', 'hue-saturation']
 
-    system_config = { 'inputs': {} }
+    # value options
+    VALUES_CC_GAIN = {512: '0db', 1024: '6db', 2048: '12db', 4096: '18db'}
+    VALUES_CC_WB = {3200: '3200K', 4500: '4500K', 5000: '5000K', 5600: '5600K', 6500: '6500K', 7500: '7500K'}
+    VALUES_CC_SHUTTER = {20000: '1/50', 16667: '1/60', 13333: '1/75', 11111: '1/90', 10000: '1/100', 8333: '1/120', 6667: '1/150', 5556: '1/180', 4000: '1/250', 2778: '1/360', 2000: '1/500', 1379: '1/725', 1000: '1/1000', 690: '1/1450', 500: '1/2000'}
+    VALUES_AUDIO_MIX = { 0: 'off', 1: 'on', 2: 'AFV' }
+
+    system_config = { 'inputs': {}, 'audio': {} }
     status = {}
-    config = { 'multiviewers': {} }
+    config = { 'multiviewers': {}, 'mediapool': {} }
     state = {
         'program': {},
         'preview': {},
         'keyers': {},
         'dskeyers': {},
-        'aux': {}
+        'aux': {},
+        'mediaplayer': {},
+        'mediapool': {},
+        'audio': {},
+        'tally_by_index': {},
+        'tally': {}
     }
-    cameracontrol = {
-        'features': {},
-        'state': {}
-    }
+    cameracontrol = {}
 
     # initializes the class
     def __init__(self, address):
@@ -77,6 +93,13 @@ class Atem:
         self.LABELS_PORTS_INTERNAL[128] = 'ME Output'
         self.LABELS_PORTS_INTERNAL[129] = 'Auxilary'
         self.LABELS_PORTS_INTERNAL[130] = 'Mask'
+
+        self.LABELS_CC_DOMAIN[8] = 'chip'
+        self.LABELS_CC_LENS_FEATURE[3] = 'iris'
+        self.LABELS_CC_LENS_FEATURE[9] = 'zoom'
+        self.LABELS_CC_CAM_FEATURE[1] = 'gain'
+        self.LABELS_CC_CAM_FEATURE[2] = 'white_balance'
+        self.LABELS_CC_CAM_FEATURE[5] = 'shutter'
 
     # hello packet
     def connectToSwitcher(self):
@@ -227,10 +250,8 @@ class Atem:
         self.system_config['topology']['hasSD'] = (data[9] > 0)
 
     def recv_MeC(self, data):
-        if not 'keyers' in self.system_config:
-            self.system_config['keyers'] = {}
         index = data[0]
-        self.system_config['keyers'][index] = data[1]
+        self.system_config.setdefault('keyers', [])[index] = data[1]
 
     def recv_mpl(self, data):
         self.system_config['media_players'] = {}
@@ -268,72 +289,220 @@ class Atem:
         self.config['video_mode'] = data[0]
 
     def recvInPr(self, data):
-        index = struct.unpack('!H', data[0:2])
+        index = struct.unpack('!H', data[0:2])[0]
         self.system_config['inputs'][index] = {}
-        with self.system_config['inputs'][index] as input:
-            input['name_long'] = data[2:21]
-            input['name_short'] = data[22:25]
-            input['types_available'] = self.parseBitmask(data[27], self.LABELS_PORTS_EXTERNAL)
-            input['port_type_external'] = data[29]
-            input['port_type_internal'] = data[30]
-            input['availability'] = self.parseBitmask(data[32], ['Auxilary', 'Multiviewer', 'SuperSourceArt',
+        with self.system_config['inputs'][index] as input_setting:
+            input_setting['name_long'] = data[2:21]
+            input_setting['name_short'] = data[22:25]
+            input_setting['types_available'] = self.parseBitmask(data[27], self.LABELS_PORTS_EXTERNAL)
+            input_setting['port_type_external'] = data[29]
+            input_setting['port_type_internal'] = data[30]
+            input_setting['availability'] = self.parseBitmask(data[32], ['Auxilary', 'Multiviewer', 'SuperSourceArt',
                                                                  'SuperSourceBox', 'KeySource'])
-            input['me_availability'] = self.parseBitmask(data[33], ['ME1', 'ME2'])
+            input_setting['me_availability'] = self.parseBitmask(data[33], ['ME1', 'ME2'])
 
     def recvMvPr(self, data):
         index = data[0]
-        if index not in self.config['multiviewers']:
-            self.config['multiviewers'][index] = {}
-        self.config['multiviewers'][index]['layout'] = data[1]
+        self.config['multiviewers'].setdefault(index, {})['layout'] = data[1]
 
     def recvMvIn(self, data):
         index = data[0]
-        if index not in self.config['multiviewers']:
-            self.config['multiviewers'][index] = {}
-        if 'windows' not in self.config['multiviewers'][index]:
-            self.config['multiviewers'][index]['windows'] = {}
         window = data[1]
-        self.config['multiviewers'][index]['windows'][window] = struct.unpack('!H', data[2:3])
+        self.config['multiviewers'].setdefault(index, {}).setdefault('windows', {})[window] = struct.unpack('!H', data[2:3])[0]
 
     def recvPrgI(self, data):
         meIndex = data[0]
-        self.state['program'][meIndex] = struct.unpack('!H', data[2:3])
+        self.state['program'][meIndex] = struct.unpack('!H', data[2:3])[0]
 
     def recvPrvI(self, data):
         meIndex = data[0]
-        self.state['preview'][meIndex] = struct.unpack('!H', data[2:3])
+        self.state['preview'][meIndex] = struct.unpack('!H', data[2:3])[0]
 
     def recvKeOn(self, data):
         meIndex = data[0]
         keyer = data[1]
-        if meIndex not in self.state['keyers']:
-            self.state['keyers'][meIndex] = {}
-        self.state['keyers'][meIndex][keyer] = (data[2] != 0)
+        self.state['keyers'].setdefault(meIndex, {})[keyer] = (data[2] != 0)
 
     def recvDskB(self, data):
         keyer = data[0]
-        if keyer not in self.state['dskeyers']:
-            self.state['dskeyers'][keyer] = {}
-        self.state['dskeyers'][keyer]['fill'] = struct.unpack('!H', data[2:3])
-        self.state['dskeyers'][keyer]['key'] = struct.unpack('!H', data[4:5])
+        with self.state['dskeyers'].setdefault(keyer, {}) as keyer_setting:
+            keyer_setting['fill'] = struct.unpack('!H', data[2:3])[0]
+            keyer_setting['key'] = struct.unpack('!H', data[4:5])[0]
 
     def recvDskS(self, data):
         keyer = data[0]
-        if keyer not in self.state['dskeyers']:
-            self.state['dskeyers'][keyer] = {}
-        self.state['dskeyers'][keyer]['onAir'] = (data[1] != 0)
-        self.state['dskeyers'][keyer]['inTransition'] = (data[2] != 0)
-        self.state['dskeyers'][keyer]['autoTransitioning'] = (data[3] != 0)
-        self.state['dskeyers'][keyer]['framesRemaining'] = data[4]
+        with self.state['dskeyers'].setdefault(keyer, {}) as dsk_setting:
+            dsk_setting['onAir'] = (data[1] != 0)
+            dsk_setting['inTransition'] = (data[2] != 0)
+            dsk_setting['autoTransitioning'] = (data[3] != 0)
+            dsk_setting['framesRemaining'] = data[4]
 
     def recvAuxS(self, data):
         auxIndex = data[0]
-        self.state[auxIndex] = struct.unpack('!H', data[2:3])
+        self.state[auxIndex] = struct.unpack('!H', data[2:3])[0]
 
     def recvCCdo(self, data):
-        input = data[1]
+        input_num = data[1]
         domain = data[2]
         feature = data[3]
+        feature_label = feature
+        try:
+            if domain == 0:
+                feature_label = self.LABELS_CC_LENS_FEATURE[feature]
+            elif domain == 1:
+                feature_label = self.LABELS_CC_CAM_FEATURE[feature]
+            elif domain == 8:
+                feature_label = self.LABELS_CC_CHIP_FEATURE[feature]
+            self.cameracontrol.setdefault(input_num, {}).setdefault('features', {}).setdefault(self.LABELS_CC_DOMAIN[domain], {})[feature_label] = bool(data[4])
+        except KeyError:
+            print("Warning: CC Feature not recognized (no label)")
+
+    def recvCCdP(self, data):
+        input_num = data[1]
+        domain = data[2]
+        feature = data[3]
+        feature_label = feature
+        val = None
+        val_translated = None
+        if domain == 0: #lens
+            if feature == 0: #focus
+                val = val_translated = struct.unpack('!h', data[16:17])[0]
+            elif feature == 1: #auto focused
+                pass
+            elif feature == 3: #iris
+                val = val_translated = struct.unpack('!h', data[16:17])[0]
+            elif feature == 9: #zoom
+                val = val_translated = struct.unpack('!h', data[16:17])[0]
+        elif domain == 1: #camera
+            if feature == 1: #gain
+                val = struct.unpack('!h', data[16:17])[0]
+                val_translated = self.VALUES_CC_GAIN.get(val, 'unknown')
+            elif feature == 2: #white balance
+                val = struct.unpack('!h', data[16:17])[0]
+                val_translated = self.VALUES_CC_WB.get(val, val + 'K')
+            elif feature == 5: #shutter
+                val = struct.unpack('!h', data[18:19])[0]
+                val_translated = self.VALUES_CC_SHUTTER.get(val, 'off')
+        elif domain == 8: #chip
+            val_keys_color = ['R','G','B','Y']
+            if feature == 0: #lift
+                val = dict(zip(val_keys_color, struct.unpack('!h', data[16:23])))
+                val_translated = {k: float(v)/4096 for k, v in val.items()}
+            elif feature == 1: #gamma
+                val = dict(zip(val_keys_color, struct.unpack('!h', data[16:23])))
+                val_translated = {k: float(v)/8192 for k, v in val.items()}
+            elif feature == 2: #gain
+                val = dict(zip(val_keys_color, struct.unpack('!h', data[16:23])))
+                val_translated = {k: float(v)*16/32767 for k, v in val.items()}
+            elif feature == 3: #aperture
+                pass # no idea
+            elif feature == 4: #contrast
+                val = struct.unpack('!h', data[18:19])[0]
+                val_translated = float(val) / 4096
+            elif feature == 5: #luminance
+                val = struct.unpack('!h', data[16:17])[0]
+                val_translated = float(val) / 2048
+            elif feature == 6: #hue-saturation
+                val_keys = ['hue', 'saturation']
+                val = dict(zip(val_keys, struct.unpack('!h', data[16:19])))
+                val_translated = {}
+                val_translated['hue'] = float(val['hue']) * 360 / 2048 + 180
+                val_translated['saturation'] = float(val['saturation']) / 4096
+        try:
+            if domain == 0:
+                feature_label = self.LABELS_CC_LENS_FEATURE[feature]
+            elif domain == 1:
+                feature_label = self.LABELS_CC_CAM_FEATURE[feature]
+            elif domain == 8:
+                feature_label = self.LABELS_CC_CHIP_FEATURE[feature]
+            self.cameracontrol.setdefault(input_num, {}).setdefault('state_raw', {}).setdefault(self.LABELS_CC_DOMAIN[domain], {})[feature_label] = val
+            self.cameracontrol.setdefault(input_num, {}).setdefault('state', {}).setdefault(self.LABELS_CC_DOMAIN[domain], {})[feature_label] = val_translated
+        except KeyError:
+            print("Warning: CC Feature not recognized (no label)")
+
+    def recvRCPS(self, data):
+        player_num = data[0]
+        with self.state['mediaplayer'].setdefault(player_num, {}) as player:
+            player['playing'] = bool(data[1])
+            player['loop'] = bool(data[2])
+            player['beginning'] = bool(data[3])
+            player['clip_frame'] = struct.unpack('!H', data[4:5])[0]
+
+    def recvMPCE(self, data):
+        player_num = data[0]
+        with self.state['mediaplayer'].setdefault(player_num, {}) as player:
+            player['type'] = { 1: 'still', 2: 'clip' }.get(data[1])
+            player['still_index'] = data[2]
+            player['clip_index'] = data[3]
+
+    def recvMPSp(self, data):
+        self.config['mediapool'].setdefault(0, {})['maxlength'] = struct.unpack('!H', data[0:1])[0]
+        self.config['mediapool'].setdefault(1, {})['maxlength'] = struct.unpack('!H', data[2:3])[0]
+
+    def recvMPCS(self, data):
+        bank = data[0]
+        with self.state['mediapool'].setdefault('clips', {}).setdefault(bank, {}) as clip_bank:
+            clip_bank['used'] = bool(data[1])
+            clip_bank['filename'] = data[2:17].decode("utf-8")
+            clip_bank['length'] = struct.unpack('!H', data[66:67])[0]
+
+    def recvMPAS(self, data):
+        bank = data[0]
+        with self.state['mediapool'].setdefault('audio', {}).setdefault(bank, {}) as audio_bank:
+            audio_bank['used'] = bool(data[1])
+            audio_bank['filename'] = data[18:33].decode("utf-8")
+
+    def recvMPfe(self, data):
+        if data[0] != 0:
+            return
+        bank = data[3]
+        with self.state['mediapool'].setdefault('stills', {}).setdefault(bank, {}) as still_bank:
+            still_bank['used'] = bool(data[4])
+            still_bank['hash'] = data[5:20].decode("utf-8")
+            filename_length = data[23]
+            still_bank['filename'] = data[24:(24+filename_length)].decode("utf-8")
+
+    def recvAMIP(self, data):
+        channel = struct.unpack('!H', data[0:1])[0]
+        with self.system_config['audio'].setdefault(channel, {}) as channel_config:
+            channel_config['fromMediaPlayer'] = bool(data[6])
+            channel_config['plug'] = data[7]
+        with self.state['audio'].setdefault(channel, {}) as channel_state:
+            channel_state['mix_option'] = data[8]
+            channel_state['volume'] = struct.unpack('!H', data[10:11])[0]
+            channel_state['balance'] = struct.unpack('!h', data[12:13])[0]
+
+    def recvAMMO(self, data):
+        self.state['audio']['master_volume'] = struct.unpack('!H', data[0:1])[0]
+
+    def recvAMmO(self, data):
+        with self.state['audio'].setdefault('monitor', {}) as monitor:
+            monitor['enabled'] = bool(data[0])
+            monitor['volume'] = struct.unpack('!H', data[2:3])[0]
+            monitor['mute'] = bool(data[4])
+            monitor['solo'] = bool(data[5])
+            monitor['solo_input'] = struct.unpack('!H', data[6:7])[0]
+            monitor['dim'] = bool(data[8])
+
+    def recvAMTl(self, data):
+        src_count = struct.unpack('!H', data[0:1])[0]
+        for i in range(2, src_count*3+2):
+            channel = struct.unpack('!H', data[i:i+1])[0]
+            self.state['audio'].setdefault('tally', {})[channel] = bool(data[i+2])
+
+    def recvTlIn(self, data):
+        src_count = struct.unpack('!H', data[0:1])[0]
+        for i in range(2, src_count+2):
+            self.state['tally_by_index'][i] = self.parseBitmask(data[i], ['pgm', 'prv'])
+
+    def recvTlSr(self, data):
+        src_count = struct.unpack('!H', data[0:1])[0]
+        for i in range(2, src_count*3+2):
+            source = struct.unpack('!H', data[i:i+1])[0]
+            self.state['tally'][source] = self.parseBitmask(data[i+2], ['pgm', 'prv'])
+
+    def recvTime(self, data):
+        self.state['last_state_change'] = struct.unpack('!BBBB', data[0:3])
 
 
 if __name__ == '__main__':
