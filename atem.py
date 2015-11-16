@@ -9,7 +9,7 @@ import struct
 def dumpHex (buffer):
     s = ''
     for c in buffer:
-        s += hex(ord(c)) + ' '
+        s += hex(c) + ' '
     print(s)
 
 
@@ -21,6 +21,89 @@ def dumpAscii (buffer):
         else:
             s+='.'
     print(s)
+
+
+# Handles changes in attributes of the Atem class
+class AttrProxy(object):
+    __slots__ = ["_obj", "__weakref__"]
+    def __init__(self, obj, atem, name):
+        self.atem = atem
+        self.name = name
+        object.__setattr__(self, "_obj", obj)
+
+    #
+    # proxying (special cases)
+    #
+    def __getattribute__(self, name):
+        return getattr(object.__getattribute__(self, "_obj"), name)
+    def __delattr__(self, name):
+        delattr(object.__getattribute__(self, "_obj"), name)
+    def __setattr__(self, name, value):
+        # settings happens here
+        print("'" + name + "' has been changed.")
+        setattr(object.__getattribute__(self, "_obj"), name, value)
+
+    def __nonzero__(self):
+        return bool(object.__getattribute__(self, "_obj"))
+    def __str__(self):
+        return str(object.__getattribute__(self, "_obj"))
+    def __repr__(self):
+        return repr(object.__getattribute__(self, "_obj"))
+
+    #
+    # factories
+    #
+    _special_names = [
+        '__abs__', '__add__', '__and__', '__call__', '__cmp__', '__coerce__',
+        '__contains__', '__delitem__', '__delslice__', '__div__', '__divmod__',
+        '__eq__', '__float__', '__floordiv__', '__ge__', '__getitem__',
+        '__getslice__', '__gt__', '__hash__', '__hex__', '__iadd__', '__iand__',
+        '__idiv__', '__idivmod__', '__ifloordiv__', '__ilshift__', '__imod__',
+        '__imul__', '__int__', '__invert__', '__ior__', '__ipow__', '__irshift__',
+        '__isub__', '__iter__', '__itruediv__', '__ixor__', '__le__', '__len__',
+        '__long__', '__lshift__', '__lt__', '__mod__', '__mul__', '__ne__',
+        '__neg__', '__oct__', '__or__', '__pos__', '__pow__', '__radd__',
+        '__rand__', '__rdiv__', '__rdivmod__', '__reduce__', '__reduce_ex__',
+        '__repr__', '__reversed__', '__rfloorfiv__', '__rlshift__', '__rmod__',
+        '__rmul__', '__ror__', '__rpow__', '__rrshift__', '__rshift__', '__rsub__',
+        '__rtruediv__', '__rxor__', '__setitem__', '__setslice__', '__sub__',
+        '__truediv__', '__xor__', 'next',
+    ]
+
+    @classmethod
+    def _create_class_proxy(cls, theclass):
+        """creates a proxy for the given class"""
+
+        def make_method(name):
+            def method(self, *args, **kw):
+                return getattr(object.__getattribute__(self, "_obj"), name)(*args, **kw)
+            return method
+
+        namespace = {}
+        for name in cls._special_names:
+            if hasattr(theclass, name):
+                namespace[name] = make_method(name)
+        return type("%s(%s)" % (cls.__name__, theclass.__name__), (cls,), namespace)
+
+    def __new__(cls, obj, *args, **kwargs):
+        """
+        creates an proxy instance referencing `obj`. (obj, *args, **kwargs) are
+        passed to this class' __init__, so deriving classes can define an
+        __init__ method of their own.
+        note: _class_proxy_cache is unique per deriving class (each deriving
+        class must hold its own cache)
+        """
+        try:
+            cache = cls.__dict__["_class_proxy_cache"]
+        except KeyError:
+            cls._class_proxy_cache = cache = {}
+        try:
+            theclass = cache[obj.__class__]
+        except KeyError:
+            cache[obj.__class__] = theclass = cls._create_class_proxy(obj.__class__)
+        ins = object.__new__(theclass)
+        theclass.__init__(ins, obj, *args, **kwargs)
+        return ins
 
 
 # implements communication with atem switcher
@@ -42,18 +125,18 @@ class Atem:
                          '720p50', '720p59.94', '1080i50', '1080i59.94',
                          '1080p23.98', '1080p24', '1080p25', '1080p29.97', '1080p50', '1080p59.94',
                          '2160p23.98', '2160p24', '2160p25', '2160p29.97']
-    LABELS_PORTS_EXTERNAL = ['SDI', 'HDMI', 'Component', 'Composite', 'SVideo']
-    LABELS_PORTS_INTERNAL = ['External', 'Black', 'Color Bars', 'Color Generator', 'Media Player Fill',
-                             'Media Player Key', 'SuperSource']
+    LABELS_PORTS_EXTERNAL = {0:'SDI', 1:'HDMI', 2:'Component', 3:'Composite', 4:'SVideo'}
+    LABELS_PORTS_INTERNAL = {0:'External', 1:'Black', 2:'Color Bars', 3:'Color Generator', 4:'Media Player Fill',
+                             5:'Media Player Key', 6:'SuperSource', 128:'ME Output', 129:'Auxilary', 130:'Mask'}
     LABELS_MULTIVIEWER_LAYOUT = ['top', 'bottom', 'left', 'right']
     LABELS_AUDIO_PLUG = ['Internal', 'SDI', 'HDMI', 'Component', 'Composite', 'SVideo', 'XLR', 'AES/EBU', 'RCA']
     LABELS_VIDEOSRC = { 0: 'Black', 1: 'Input 1', 2: 'Input 2', 3: 'Input 3', 4: 'Input 4', 5: 'Input 5', 6: 'Input 6', 7: 'Input 7', 8: 'Input 8', 9: 'Input 9', 10: 'Input 10', 11: 'Input 11', 12: 'Input 12', 13: 'Input 13', 14: 'Input 14', 15: 'Input 15', 16: 'Input 16', 17: 'Input 17', 18: 'Input 18', 19: 'Input 19', 20: 'Input 20', 1000: 'Color Bars', 2001: 'Color 1', 2002: 'Color 2', 3010: 'Media Player 1', 3011: 'Media Player 1 Key', 3020: 'Media Player 2', 3021: 'Media Player 2 Key', 4010: 'Key 1 Mask', 4020: 'Key 2 Mask', 4030: 'Key 3 Mask', 4040: 'Key 4 Mask', 5010: 'DSK 1 Mask', 5020: 'DSK 2 Mask', 6000: 'Super Source', 7001: 'Clean Feed 1', 7002: 'Clean Feed 2', 8001: 'Auxilary 1', 8002: 'Auxilary 2', 8003: 'Auxilary 3', 8004: 'Auxilary 4', 8005: 'Auxilary 5', 8006: 'Auxilary 6', 10010: 'ME 1 Prog', 10011: 'ME 1 Prev', 10020: 'ME 2 Prog', 10021: 'ME 2 Prev' }
     LABELS_AUDIOSRC = { 1: 'Input 1', 2: 'Input 2', 3: 'Input 3', 4: 'Input 4', 5: 'Input 5', 6: 'Input 6', 7: 'Input 7', 8: 'Input 8', 9: 'Input 9', 10: 'Input 10', 11: 'Input 11', 12: 'Input 12', 13: 'Input 13', 14: 'Input 14', 15: 'Input 15', 16: 'Input 16', 17: 'Input 17', 18: 'Input 18', 19: 'Input 19', 20: 'Input 20', 1001: 'XLR', 1101: 'AES/EBU', 1201: 'RCA', 2001: 'MP1', 2002: 'MP2' }
     # cc
-    LABELS_CC_DOMAIN = ['lens', 'camera']
-    LABELS_CC_LENS_FEATURE = ['focus', 'auto_focused']
-    LABELS_CC_CAM_FEATURE = []
-    LABELS_CC_CHIP_FEATURE = ['lift', 'gamma', 'gain', 'aperture', 'contrast', 'luminance', 'hue-saturation']
+    LABELS_CC_DOMAIN = {0:'lens', 1:'camera', 8:'chip'}
+    LABELS_CC_LENS_FEATURE = {0:'focus', 1:'auto_focused', 3:'iris', 9:'zoom'}
+    LABELS_CC_CAM_FEATURE = {1:'gain', 2:'white_balance', 5:'shutter'}
+    LABELS_CC_CHIP_FEATURE = {0:'lift', 1:'gamma', 2:'gain', 3:'aperture', 4:'contrast', 5:'luminance', 6:'hue-saturation'}
 
     # value options
     VALUES_CC_GAIN = {512: '0db', 1024: '6db', 2048: '12db', 4096: '18db'}
@@ -89,17 +172,6 @@ class Atem:
         self.packetCounter = 0
         self.isInitialized = False
         self.currentUid = 0x1337
-
-        self.LABELS_PORTS_INTERNAL[128] = 'ME Output'
-        self.LABELS_PORTS_INTERNAL[129] = 'Auxilary'
-        self.LABELS_PORTS_INTERNAL[130] = 'Mask'
-
-        self.LABELS_CC_DOMAIN[8] = 'chip'
-        self.LABELS_CC_LENS_FEATURE[3] = 'iris'
-        self.LABELS_CC_LENS_FEATURE[9] = 'zoom'
-        self.LABELS_CC_CAM_FEATURE[1] = 'gain'
-        self.LABELS_CC_CAM_FEATURE[2] = 'white_balance'
-        self.LABELS_CC_CAM_FEATURE[5] = 'shutter'
 
     # hello packet
     def connectToSwitcher(self):
@@ -144,7 +216,7 @@ class Atem:
 
     # generates packet header data
     def createCommandHeader (self, bitmask, payloadSize, uid, ackId) :
-        buffer = ''
+        buffer = b''
         packageId = 0
 
         if not (bitmask & (self.CMD_HELLOPACKET | self.CMD_ACK)) :
@@ -165,7 +237,7 @@ class Atem:
         header = {}
 
         if len(datagram)>=self.SIZE_OF_HEADER :
-            header['bitmask'] = struct.unpack('B',datagram[0])[0] >> 3
+            header['bitmask'] = struct.unpack('B',datagram[0:1])[0] >> 3
             header['size'] = struct.unpack('!H',datagram[0:2])[0] & 0x07FF
             header['uid'] = struct.unpack('!H',datagram[2:4])[0]
             header['ackId'] = struct.unpack('!H',datagram[4:6])[0]
@@ -194,7 +266,7 @@ class Atem:
             if method in dir(self) :
                 func = getattr(self, method)
                 if callable(func) :
-                    print(method)
+                    print('> calling '+method)
                     func(payload)
                 else:
                     print('problem, member '+method+' not callable')
@@ -231,7 +303,7 @@ class Atem:
     # ----------------------
 
     def recv_ver(self, data):
-        major, minor = struct.unpack('!HH', data)
+        major, minor = struct.unpack('!HH', data[0:4])
         self.system_config['version'] = str(major)+'.'+str(minor)
 
     def recv_pin (self, data):
@@ -292,8 +364,8 @@ class Atem:
         index = struct.unpack('!H', data[0:2])[0]
         self.system_config['inputs'][index] = {}
         with self.system_config['inputs'][index] as input_setting:
-            input_setting['name_long'] = data[2:21]
-            input_setting['name_short'] = data[22:25]
+            input_setting['name_long'] = data[2:22].decode("utf-8")
+            input_setting['name_short'] = data[22:26].decode("utf-8")
             input_setting['types_available'] = self.parseBitmask(data[27], self.LABELS_PORTS_EXTERNAL)
             input_setting['port_type_external'] = data[29]
             input_setting['port_type_internal'] = data[30]
@@ -308,15 +380,15 @@ class Atem:
     def recvMvIn(self, data):
         index = data[0]
         window = data[1]
-        self.config['multiviewers'].setdefault(index, {}).setdefault('windows', {})[window] = struct.unpack('!H', data[2:3])[0]
+        self.config['multiviewers'].setdefault(index, {}).setdefault('windows', {})[window] = struct.unpack('!H', data[2:4])[0]
 
     def recvPrgI(self, data):
         meIndex = data[0]
-        self.state['program'][meIndex] = struct.unpack('!H', data[2:3])[0]
+        self.state['program'][meIndex] = struct.unpack('!H', data[2:4])[0]
 
     def recvPrvI(self, data):
         meIndex = data[0]
-        self.state['preview'][meIndex] = struct.unpack('!H', data[2:3])[0]
+        self.state['preview'][meIndex] = struct.unpack('!H', data[2:4])[0]
 
     def recvKeOn(self, data):
         meIndex = data[0]
@@ -326,8 +398,8 @@ class Atem:
     def recvDskB(self, data):
         keyer = data[0]
         with self.state['dskeyers'].setdefault(keyer, {}) as keyer_setting:
-            keyer_setting['fill'] = struct.unpack('!H', data[2:3])[0]
-            keyer_setting['key'] = struct.unpack('!H', data[4:5])[0]
+            keyer_setting['fill'] = struct.unpack('!H', data[2:4])[0]
+            keyer_setting['key'] = struct.unpack('!H', data[4:6])[0]
 
     def recvDskS(self, data):
         keyer = data[0]
@@ -339,7 +411,7 @@ class Atem:
 
     def recvAuxS(self, data):
         auxIndex = data[0]
-        self.state[auxIndex] = struct.unpack('!H', data[2:3])[0]
+        self.state[auxIndex] = struct.unpack('!H', data[2:4])[0]
 
     def recvCCdo(self, data):
         input_num = data[1]
@@ -366,45 +438,45 @@ class Atem:
         val_translated = None
         if domain == 0: #lens
             if feature == 0: #focus
-                val = val_translated = struct.unpack('!h', data[16:17])[0]
+                val = val_translated = struct.unpack('!h', data[16:18])[0]
             elif feature == 1: #auto focused
                 pass
             elif feature == 3: #iris
-                val = val_translated = struct.unpack('!h', data[16:17])[0]
+                val = val_translated = struct.unpack('!h', data[16:18])[0]
             elif feature == 9: #zoom
-                val = val_translated = struct.unpack('!h', data[16:17])[0]
+                val = val_translated = struct.unpack('!h', data[16:18])[0]
         elif domain == 1: #camera
             if feature == 1: #gain
-                val = struct.unpack('!h', data[16:17])[0]
+                val = struct.unpack('!h', data[16:18])[0]
                 val_translated = self.VALUES_CC_GAIN.get(val, 'unknown')
             elif feature == 2: #white balance
-                val = struct.unpack('!h', data[16:17])[0]
+                val = struct.unpack('!h', data[16:18])[0]
                 val_translated = self.VALUES_CC_WB.get(val, val + 'K')
             elif feature == 5: #shutter
-                val = struct.unpack('!h', data[18:19])[0]
+                val = struct.unpack('!h', data[18:20])[0]
                 val_translated = self.VALUES_CC_SHUTTER.get(val, 'off')
         elif domain == 8: #chip
             val_keys_color = ['R','G','B','Y']
             if feature == 0: #lift
-                val = dict(zip(val_keys_color, struct.unpack('!h', data[16:23])))
+                val = dict(zip(val_keys_color, struct.unpack('!hhhh', data[16:24])))
                 val_translated = {k: float(v)/4096 for k, v in val.items()}
             elif feature == 1: #gamma
-                val = dict(zip(val_keys_color, struct.unpack('!h', data[16:23])))
+                val = dict(zip(val_keys_color, struct.unpack('!hhhh', data[16:24])))
                 val_translated = {k: float(v)/8192 for k, v in val.items()}
             elif feature == 2: #gain
-                val = dict(zip(val_keys_color, struct.unpack('!h', data[16:23])))
+                val = dict(zip(val_keys_color, struct.unpack('!hhhh', data[16:24])))
                 val_translated = {k: float(v)*16/32767 for k, v in val.items()}
             elif feature == 3: #aperture
                 pass # no idea
             elif feature == 4: #contrast
-                val = struct.unpack('!h', data[18:19])[0]
+                val = struct.unpack('!h', data[18:20])[0]
                 val_translated = float(val) / 4096
             elif feature == 5: #luminance
-                val = struct.unpack('!h', data[16:17])[0]
+                val = struct.unpack('!h', data[16:18])[0]
                 val_translated = float(val) / 2048
             elif feature == 6: #hue-saturation
                 val_keys = ['hue', 'saturation']
-                val = dict(zip(val_keys, struct.unpack('!h', data[16:19])))
+                val = dict(zip(val_keys, struct.unpack('!hh', data[16:20])))
                 val_translated = {}
                 val_translated['hue'] = float(val['hue']) * 360 / 2048 + 180
                 val_translated['saturation'] = float(val['saturation']) / 4096
@@ -426,7 +498,7 @@ class Atem:
             player['playing'] = bool(data[1])
             player['loop'] = bool(data[2])
             player['beginning'] = bool(data[3])
-            player['clip_frame'] = struct.unpack('!H', data[4:5])[0]
+            player['clip_frame'] = struct.unpack('!H', data[4:6])[0]
 
     def recvMPCE(self, data):
         player_num = data[0]
@@ -436,21 +508,21 @@ class Atem:
             player['clip_index'] = data[3]
 
     def recvMPSp(self, data):
-        self.config['mediapool'].setdefault(0, {})['maxlength'] = struct.unpack('!H', data[0:1])[0]
-        self.config['mediapool'].setdefault(1, {})['maxlength'] = struct.unpack('!H', data[2:3])[0]
+        self.config['mediapool'].setdefault(0, {})['maxlength'] = struct.unpack('!H', data[0:2])[0]
+        self.config['mediapool'].setdefault(1, {})['maxlength'] = struct.unpack('!H', data[2:4])[0]
 
     def recvMPCS(self, data):
         bank = data[0]
         with self.state['mediapool'].setdefault('clips', {}).setdefault(bank, {}) as clip_bank:
             clip_bank['used'] = bool(data[1])
-            clip_bank['filename'] = data[2:17].decode("utf-8")
-            clip_bank['length'] = struct.unpack('!H', data[66:67])[0]
+            clip_bank['filename'] = data[2:18].decode("utf-8")
+            clip_bank['length'] = struct.unpack('!H', data[66:68])[0]
 
     def recvMPAS(self, data):
         bank = data[0]
         with self.state['mediapool'].setdefault('audio', {}).setdefault(bank, {}) as audio_bank:
             audio_bank['used'] = bool(data[1])
-            audio_bank['filename'] = data[18:33].decode("utf-8")
+            audio_bank['filename'] = data[18:34].decode("utf-8")
 
     def recvMPfe(self, data):
         if data[0] != 0:
@@ -458,52 +530,60 @@ class Atem:
         bank = data[3]
         with self.state['mediapool'].setdefault('stills', {}).setdefault(bank, {}) as still_bank:
             still_bank['used'] = bool(data[4])
-            still_bank['hash'] = data[5:20].decode("utf-8")
+            still_bank['hash'] = data[5:21].decode("utf-8")
             filename_length = data[23]
             still_bank['filename'] = data[24:(24+filename_length)].decode("utf-8")
 
     def recvAMIP(self, data):
-        channel = struct.unpack('!H', data[0:1])[0]
+        channel = struct.unpack('!H', data[0:2])[0]
         with self.system_config['audio'].setdefault(channel, {}) as channel_config:
             channel_config['fromMediaPlayer'] = bool(data[6])
             channel_config['plug'] = data[7]
         with self.state['audio'].setdefault(channel, {}) as channel_state:
             channel_state['mix_option'] = data[8]
-            channel_state['volume'] = struct.unpack('!H', data[10:11])[0]
-            channel_state['balance'] = struct.unpack('!h', data[12:13])[0]
+            channel_state['volume'] = struct.unpack('!H', data[10:12])[0]
+            channel_state['balance'] = struct.unpack('!h', data[12:14])[0]
 
     def recvAMMO(self, data):
-        self.state['audio']['master_volume'] = struct.unpack('!H', data[0:1])[0]
+        self.state['audio']['master_volume'] = struct.unpack('!H', data[0:2])[0]
 
     def recvAMmO(self, data):
         with self.state['audio'].setdefault('monitor', {}) as monitor:
             monitor['enabled'] = bool(data[0])
-            monitor['volume'] = struct.unpack('!H', data[2:3])[0]
+            monitor['volume'] = struct.unpack('!H', data[2:4])[0]
             monitor['mute'] = bool(data[4])
             monitor['solo'] = bool(data[5])
-            monitor['solo_input'] = struct.unpack('!H', data[6:7])[0]
+            monitor['solo_input'] = struct.unpack('!H', data[6:8])[0]
             monitor['dim'] = bool(data[8])
 
     def recvAMTl(self, data):
-        src_count = struct.unpack('!H', data[0:1])[0]
+        src_count = struct.unpack('!H', data[0:2])[0]
         for i in range(2, src_count*3+2):
-            channel = struct.unpack('!H', data[i:i+1])[0]
+            channel = struct.unpack('!H', data[i:i+2])[0]
             self.state['audio'].setdefault('tally', {})[channel] = bool(data[i+2])
 
     def recvTlIn(self, data):
-        src_count = struct.unpack('!H', data[0:1])[0]
+        src_count = struct.unpack('!H', data[0:2])[0]
         for i in range(2, src_count+2):
             self.state['tally_by_index'][i] = self.parseBitmask(data[i], ['pgm', 'prv'])
 
     def recvTlSr(self, data):
-        src_count = struct.unpack('!H', data[0:1])[0]
+        src_count = struct.unpack('!H', data[0:2])[0]
         for i in range(2, src_count*3+2):
-            source = struct.unpack('!H', data[i:i+1])[0]
+            source = struct.unpack('!H', data[i:i+2])[0]
             self.state['tally'][source] = self.parseBitmask(data[i+2], ['pgm', 'prv'])
 
     def recvTime(self, data):
-        self.state['last_state_change'] = struct.unpack('!BBBB', data[0:3])
+        self.state['last_state_change'] = struct.unpack('!BBBB', data[0:4])
 
+    # handling of attribute setting
+    # -----------------------------
+    def __setattr__(self, name, value):
+        if name in ['system_config', 'status', 'config', 'state', 'cameracontrol']:
+            self.__dict__[name] = AttrProxy(value, self, name)
+            print("object setting proxied")
+        else:
+            self.__dict__[name] = value
 
 if __name__ == '__main__':
     import config
