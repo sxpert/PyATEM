@@ -26,9 +26,7 @@ def dumpAscii (buffer):
 
 # Handles changes in attributes of the Atem class
 class DictProxy(collections.UserDict):
-    """
-    :type _atem: Atem
-    """
+    # :type _atem: Atem
     _atem = None
     _name = []
     def __init__(self, data, atem, name):
@@ -36,7 +34,7 @@ class DictProxy(collections.UserDict):
         self._name = name
         collections.UserDict.__init__(self, data)
 
-    # proxying dict setting
+    # proxying dict value setting
     def __setitem__(self, key, value):
         if isinstance(value, dict):
             self.data[key] = DictProxy(value, self._atem, self._name+[key])
@@ -527,8 +525,22 @@ class Atem:
 
     def attrChange(self, name, value):
         print("'" + '/'.join(name) + "' has changed")
+        # todo: destinguish whether changed while parsing or from external
         # todo: implement communication of value change to the switcher
         return True
+
+    ## user functions
+    # used to register a function that should be called when a change is received from the atem
+    def handleAtemChange(self, func, method=''):
+        pass # todo: if given, filter by method parameter, then call func with atem method
+
+    # used to register a function that should be called when a change is set in an attribute
+    def handleStateChange(self, func, name=[]):
+        pass # todo: if given, filer by name path, then call func with name path and val
+
+    # used to get ranges and options lists for attributes
+    def getOption(self, name):
+        return # todo: return range/list of options for the given attribute name path
 
 if __name__ == '__main__':
     import config
