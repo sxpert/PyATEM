@@ -39,7 +39,7 @@ class DictProxy(collections.UserDict):
         if isinstance(value, dict):
             self.data[key] = DictProxy(value, self._atem, self._name+[key])
         else:
-            if self._atem.attrChange(self._name+[key], value):
+            if self._atem.attrChange(self._name+[str(key)], value):
                 self.data[key] = value
 
 
@@ -120,16 +120,16 @@ class Atem:
         self.sendDatagram(datagram)
 
     # reads packets sent by the switcher
-    def handleSocketData (self) :
+    def handleSocketData(self):
         # network is 100Mbit/s max, MTU is thus at most 1500
-        try :
+        try:
             d = self.socket.recvfrom(2048)
         except socket.error:
             return False
         datagram, server = d
         print('received datagram')
         header = self.parseCommandHeader(datagram)
-        if header :
+        if header:
             self.currentUid = header['uid']
             
             if header['bitmask'] & self.CMD_HELLOPACKET :
@@ -154,12 +154,12 @@ class Atem:
         print(">>> packet obtained")
 
     # generates packet header data
-    def createCommandHeader (self, bitmask, payloadSize, uid, ackId) :
+    def createCommandHeader (self, bitmask, payloadSize, uid, ackId):
         buffer = b''
         packageId = 0
 
-        if not (bitmask & (self.CMD_HELLOPACKET | self.CMD_ACK)) :
-            self.packetCounter+=1
+        if not (bitmask & (self.CMD_HELLOPACKET | self.CMD_ACK)):
+            self.packetCounter += 1
             packageId = self.packetCounter
     
         val = bitmask << 11
@@ -172,7 +172,7 @@ class Atem:
         return buffer
 
     # parses the packet header
-    def parseCommandHeader (self, datagram) :
+    def parseCommandHeader (self, datagram):
         header = {}
 
         if len(datagram)>=self.SIZE_OF_HEADER :
@@ -185,7 +185,7 @@ class Atem:
             return header
         return False
 
-    def parsePayload (self, datagram) :
+    def parsePayload (self, datagram):
         print('parsing payload')
         # eat up header
         datagram = datagram[self.SIZE_OF_HEADER:]
@@ -201,7 +201,7 @@ class Atem:
             payload = packet[4:]
 
             # find the approporiate function in the class
-            method = 'recv'+ptype
+            method = 'recv' + ptype.decode("utf-8")
             if method in dir(self) :
                 func = getattr(self, method)
                 if callable(func) :
@@ -209,7 +209,7 @@ class Atem:
                     func(payload)
                 else:
                     print('problem, member '+method+' not callable')
-            else :
+            else:
                 print('unknown type '+ptype)
                 #dumpAscii(payload)
 
@@ -262,7 +262,7 @@ class Atem:
 
     def recv_MeC(self, data):
         index = data[0]
-        self.system_config.setdefault('keyers', [])[index] = data[1]
+        self.system_config.setdefault('keyers', {})[index] = data[1]
 
     def recv_mpl(self, data):
         self.system_config['media_players'] = {}
@@ -285,7 +285,7 @@ class Atem:
     def recv_VMC(self, data):
         size = 18
         for i in range(size):
-            self.system_config['video_modes'][i] = bool(data[0] & (1 << size - i - 1))
+            self.system_config.setdefault('video_modes', {})[i] = bool(data[0] & (1 << size - i - 1))
 
     def recv_MAC(self, data):
         self.system_config['macro_banks'] = data[0]
@@ -302,14 +302,14 @@ class Atem:
     def recvInPr(self, data):
         index = struct.unpack('!H', data[0:2])[0]
         self.system_config['inputs'][index] = {}
+        self.system_config['inputs'][index]['name_long'] = data[2:22].decode("utf-8")
         with self.system_config['inputs'][index] as input_setting:
-            input_setting['name_long'] = data[2:22].decode("utf-8")
             input_setting['name_short'] = data[22:26].decode("utf-8")
             input_setting['types_available'] = self.parseBitmask(data[27], self.LABELS_PORTS_EXTERNAL)
             input_setting['port_type_external'] = data[29]
             input_setting['port_type_internal'] = data[30]
             input_setting['availability'] = self.parseBitmask(data[32], ['Auxilary', 'Multiviewer', 'SuperSourceArt',
-                                                                 'SuperSourceBox', 'KeySource'])
+                                                                         'SuperSourceBox', 'KeySource'])
             input_setting['me_availability'] = self.parseBitmask(data[33], ['ME1', 'ME2'])
 
     def recvMvPr(self, data):
@@ -525,36 +525,26 @@ class Atem:
 
     def attrChange(self, name, value):
         print("'" + '/'.join(name) + "' has changed")
-        # todo: destinguish whether changed while parsing or from external
+        # todo: distinguish whether changed while parsing or from external
         # todo: implement communication of value change to the switcher
         return True
 
     ## user functions
     # used to register a function that should be called when a change is received from the atem
     def handleAtemChange(self, func, method=''):
-        pass # todo: if given, filter by method parameter, then call func with atem method
+        pass  # todo: if given, filter by method parameter, then call func with atem method
 
     # used to register a function that should be called when a change is set in an attribute
     def handleStateChange(self, func, name=[]):
-        pass # todo: if given, filer by name path, then call func with name path and val
+        pass  # todo: if given, filer by name path, then call func with name path and val
 
     # used to get ranges and options lists for attributes
     def getOption(self, name):
-        return # todo: return range/list of options for the given attribute name path
+        return  # todo: return range/list of options for the given attribute name path
 
 if __name__ == '__main__':
     import config
     a = Atem(config.address)
     a.connectToSwitcher()
-    #while (True):
-    import time
-    a.waitForPacket()
-    a.waitForPacket()
-    a.waitForPacket()
-    a.waitForPacket()
-    a.waitForPacket()
-    a.waitForPacket()
-    a.waitForPacket()
-    print("sending command")
-    a.sendCommand("DCut", "\x00\x00\x00\x00")
-    a.waitForPacket()    
+    while True:
+        a.waitForPacket()
