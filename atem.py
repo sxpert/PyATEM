@@ -406,7 +406,7 @@ class Atem:
                 val = dict(zip(val_keys_color, struct.unpack('!hhhh', data[16:24])))
                 val_translated = {k: float(v)*16/32767 for k, v in val.items()}
             elif feature == 3: #aperture
-                pass # no idea
+                pass # no idea - todo
             elif feature == 4: #contrast
                 val = struct.unpack('!h', data[18:20])[0]
                 val_translated = float(val) / 4096
