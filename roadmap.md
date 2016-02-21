@@ -31,17 +31,17 @@
  - FTB
  - transitions
  - ...
-- ATEMKeyerBase
- - ATEMKeyer
- - ATEMDownstreamKeyer
-- ATEMVirtualSource
- - ATEMColorGen
- - ATEMMediaplayer
-- ATEMMediaPool
-- ATEMAux
-- ATEMCameraControl
-- ATEMSuperSource
-- ATEMAudioMixer
-- ATEMTally
+- AtemKeyerBase
+ - AtemKeyer
+ - AtemDownstreamKeyer
+- AtemVirtualSource
+ - AtemColorGen
+ - AtemMediaplayer
+- AtemMediaPool
+- AtemAux
+- AtemCameraControl
+- AtemSuperSource
+- AtemAudioMixer
+- AtemTally
  - video tallies
  - audio tallies
