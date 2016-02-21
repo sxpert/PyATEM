@@ -5,6 +5,7 @@
 import socket
 import struct
 import collections
+import ctypes
 
 
 def dumpHex (buffer):
@@ -22,25 +23,6 @@ def dumpAscii (buffer):
         else:
             s+='.'
     print(s)
-
-
-# Handles changes in attributes of the Atem class
-class DictProxy(collections.UserDict):
-    # :type _atem: Atem
-    _atem = None
-    _name = []
-    def __init__(self, data, atem, name):
-        self._atem = atem
-        self._name = name
-        collections.UserDict.__init__(self, data)
-
-    # proxying dict value setting
-    def __setitem__(self, key, value):
-        if isinstance(value, dict):
-            self.data[key] = DictProxy(value, self._atem, self._name+[key])
-        else:
-            if self._atem.attrChange(self._name+[str(key)], value):
-                self.data[key] = value
 
 
 # implements communication with atem switcher
@@ -210,7 +192,7 @@ class Atem:
                 else:
                     print('problem, member '+method+' not callable')
             else:
-                print('unknown type '+ptype)
+                print('unknown type '+ptype.decode("utf-8"))
                 #dumpAscii(payload)
 
         #sys.exit()
@@ -237,6 +219,8 @@ class Atem:
             states[label] = bool(num & (1 << len(labels) - i - 1))
         return states
 
+    def convert_cstring(self, bytes):
+        return ctypes.create_string_buffer(bytes).value.decode('utf-8')
 
     # handling of subpackets
     # ----------------------
@@ -302,15 +286,15 @@ class Atem:
     def recvInPr(self, data):
         index = struct.unpack('!H', data[0:2])[0]
         self.system_config['inputs'][index] = {}
-        self.system_config['inputs'][index]['name_long'] = data[2:22].decode("utf-8")
-        with self.system_config['inputs'][index] as input_setting:
-            input_setting['name_short'] = data[22:26].decode("utf-8")
-            input_setting['types_available'] = self.parseBitmask(data[27], self.LABELS_PORTS_EXTERNAL)
-            input_setting['port_type_external'] = data[29]
-            input_setting['port_type_internal'] = data[30]
-            input_setting['availability'] = self.parseBitmask(data[32], ['Auxilary', 'Multiviewer', 'SuperSourceArt',
-                                                                         'SuperSourceBox', 'KeySource'])
-            input_setting['me_availability'] = self.parseBitmask(data[33], ['ME1', 'ME2'])
+        input_setting = self.system_config['inputs'][index]
+        input_setting['name_long'] = self.convert_cstring(data[2:22])
+        input_setting['name_short'] = self.convert_cstring(data[22:26])
+        input_setting['types_available'] = self.parseBitmask(data[27], self.LABELS_PORTS_EXTERNAL)
+        input_setting['port_type_external'] = data[29]
+        input_setting['port_type_internal'] = data[30]
+        input_setting['availability'] = self.parseBitmask(data[32], ['Auxilary', 'Multiviewer', 'SuperSourceArt',
+                                                                     'SuperSourceBox', 'KeySource'])
+        input_setting['me_availability'] = self.parseBitmask(data[33], ['ME1', 'ME2'])
 
     def recvMvPr(self, data):
         index = data[0]
@@ -336,17 +320,17 @@ class Atem:
 
     def recvDskB(self, data):
         keyer = data[0]
-        with self.state['dskeyers'].setdefault(keyer, {}) as keyer_setting:
-            keyer_setting['fill'] = struct.unpack('!H', data[2:4])[0]
-            keyer_setting['key'] = struct.unpack('!H', data[4:6])[0]
+        keyer_setting = self.state['dskeyers'].setdefault(keyer, {})
+        keyer_setting['fill'] = struct.unpack('!H', data[2:4])[0]
+        keyer_setting['key'] = struct.unpack('!H', data[4:6])[0]
 
     def recvDskS(self, data):
         keyer = data[0]
-        with self.state['dskeyers'].setdefault(keyer, {}) as dsk_setting:
-            dsk_setting['onAir'] = (data[1] != 0)
-            dsk_setting['inTransition'] = (data[2] != 0)
-            dsk_setting['autoTransitioning'] = (data[3] != 0)
-            dsk_setting['framesRemaining'] = data[4]
+        dsk_setting = self.state['dskeyers'].setdefault(keyer, {})
+        dsk_setting['onAir'] = (data[1] != 0)
+        dsk_setting['inTransition'] = (data[2] != 0)
+        dsk_setting['autoTransitioning'] = (data[3] != 0)
+        dsk_setting['framesRemaining'] = data[4]
 
     def recvAuxS(self, data):
         auxIndex = data[0]
@@ -433,18 +417,18 @@ class Atem:
 
     def recvRCPS(self, data):
         player_num = data[0]
-        with self.state['mediaplayer'].setdefault(player_num, {}) as player:
-            player['playing'] = bool(data[1])
-            player['loop'] = bool(data[2])
-            player['beginning'] = bool(data[3])
-            player['clip_frame'] = struct.unpack('!H', data[4:6])[0]
+        player = self.state['mediaplayer'].setdefault(player_num, {})
+        player['playing'] = bool(data[1])
+        player['loop'] = bool(data[2])
+        player['beginning'] = bool(data[3])
+        player['clip_frame'] = struct.unpack('!H', data[4:6])[0]
 
     def recvMPCE(self, data):
         player_num = data[0]
-        with self.state['mediaplayer'].setdefault(player_num, {}) as player:
-            player['type'] = { 1: 'still', 2: 'clip' }.get(data[1])
-            player['still_index'] = data[2]
-            player['clip_index'] = data[3]
+        player = self.state['mediaplayer'].setdefault(player_num, {})
+        player['type'] = {1: 'still', 2: 'clip'}.get(data[1])
+        player['still_index'] = data[2]
+        player['clip_index'] = data[3]
 
     def recvMPSp(self, data):
         self.config['mediapool'].setdefault(0, {})['maxlength'] = struct.unpack('!H', data[0:2])[0]
@@ -452,54 +436,56 @@ class Atem:
 
     def recvMPCS(self, data):
         bank = data[0]
-        with self.state['mediapool'].setdefault('clips', {}).setdefault(bank, {}) as clip_bank:
-            clip_bank['used'] = bool(data[1])
-            clip_bank['filename'] = data[2:18].decode("utf-8")
-            clip_bank['length'] = struct.unpack('!H', data[66:68])[0]
+        clip_bank = self.state['mediapool'].setdefault('clips', {}).setdefault(bank, {})
+        clip_bank['used'] = bool(data[1])
+        clip_bank['filename'] = self.convert_cstring(data[2:18])
+        clip_bank['length'] = struct.unpack('!H', data[66:68])[0]
 
     def recvMPAS(self, data):
         bank = data[0]
-        with self.state['mediapool'].setdefault('audio', {}).setdefault(bank, {}) as audio_bank:
-            audio_bank['used'] = bool(data[1])
-            audio_bank['filename'] = data[18:34].decode("utf-8")
+        audio_bank = self.state['mediapool'].setdefault('audio', {}).setdefault(bank, {})
+        audio_bank['used'] = bool(data[1])
+        audio_bank['filename'] = self.convert_cstring(data[18:34])
 
     def recvMPfe(self, data):
         if data[0] != 0:
             return
         bank = data[3]
-        with self.state['mediapool'].setdefault('stills', {}).setdefault(bank, {}) as still_bank:
-            still_bank['used'] = bool(data[4])
-            still_bank['hash'] = data[5:21].decode("utf-8")
-            filename_length = data[23]
-            still_bank['filename'] = data[24:(24+filename_length)].decode("utf-8")
+        still_bank = self.state['mediapool'].setdefault('stills', {}).setdefault(bank, {})
+        still_bank['used'] = bool(data[4])
+        still_bank['hash'] = data[5:21].decode("utf-8")
+        filename_length = data[23]
+        still_bank['filename'] = data[24:(24+filename_length)].decode("utf-8")
 
     def recvAMIP(self, data):
         channel = struct.unpack('!H', data[0:2])[0]
-        with self.system_config['audio'].setdefault(channel, {}) as channel_config:
-            channel_config['fromMediaPlayer'] = bool(data[6])
-            channel_config['plug'] = data[7]
-        with self.state['audio'].setdefault(channel, {}) as channel_state:
-            channel_state['mix_option'] = data[8]
-            channel_state['volume'] = struct.unpack('!H', data[10:12])[0]
-            channel_state['balance'] = struct.unpack('!h', data[12:14])[0]
+        channel_config = self.system_config['audio'].setdefault(channel, {})
+        channel_config['fromMediaPlayer'] = bool(data[6])
+        channel_config['plug'] = data[7]
+
+        channel_state = self.state['audio'].setdefault(channel, {})
+        channel_state['mix_option'] = data[8]
+        channel_state['volume'] = struct.unpack('!H', data[10:12])[0]
+        channel_state['balance'] = struct.unpack('!h', data[12:14])[0]
 
     def recvAMMO(self, data):
         self.state['audio']['master_volume'] = struct.unpack('!H', data[0:2])[0]
 
     def recvAMmO(self, data):
-        with self.state['audio'].setdefault('monitor', {}) as monitor:
-            monitor['enabled'] = bool(data[0])
-            monitor['volume'] = struct.unpack('!H', data[2:4])[0]
-            monitor['mute'] = bool(data[4])
-            monitor['solo'] = bool(data[5])
-            monitor['solo_input'] = struct.unpack('!H', data[6:8])[0]
-            monitor['dim'] = bool(data[8])
+        monitor = self.state['audio'].setdefault('monitor', {})
+        monitor['enabled'] = bool(data[0])
+        monitor['volume'] = struct.unpack('!H', data[2:4])[0]
+        monitor['mute'] = bool(data[4])
+        monitor['solo'] = bool(data[5])
+        monitor['solo_input'] = struct.unpack('!H', data[6:8])[0]
+        monitor['dim'] = bool(data[8])
 
     def recvAMTl(self, data):
         src_count = struct.unpack('!H', data[0:2])[0]
-        for i in range(2, src_count*3+2):
-            channel = struct.unpack('!H', data[i:i+2])[0]
-            self.state['audio'].setdefault('tally', {})[channel] = bool(data[i+2])
+        for i in range(src_count):
+            num = 2+i*3
+            channel = struct.unpack('!H', data[num:num+2])[0]
+            self.state['audio'].setdefault('tally', {})[channel] = bool(data[num+2])
 
     def recvTlIn(self, data):
         src_count = struct.unpack('!H', data[0:2])[0]
@@ -515,20 +501,6 @@ class Atem:
     def recvTime(self, data):
         self.state['last_state_change'] = struct.unpack('!BBBB', data[0:4])
 
-    # handling of attribute setting
-    # -----------------------------
-    def __setattr__(self, name, value):
-        if name in ['system_config', 'status', 'config', 'state', 'cameracontrol']:
-            self.__dict__[name] = DictProxy(value, self, [name])
-        else:
-            self.__dict__[name] = value
-
-    def attrChange(self, name, value):
-        print("'" + '/'.join(name) + "' has changed")
-        # todo: distinguish whether changed while parsing or from external
-        # todo: implement communication of value change to the switcher
-        return True
-
     ## user functions
     # used to register a function that should be called when a change is received from the atem
     def handleAtemChange(self, func, method=''):
@@ -541,6 +513,18 @@ class Atem:
     # used to get ranges and options lists for attributes
     def getOption(self, name):
         return  # todo: return range/list of options for the given attribute name path
+
+    def dump(self):
+        print(self.system_config)
+        print(self.status)
+        print(self.state)
+        print(self.cameracontrol)
+
+
+def init(a):
+    a.connectToSwitcher()
+    while True:
+        a.waitForPacket()
 
 if __name__ == '__main__':
     import config
