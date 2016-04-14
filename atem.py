@@ -212,9 +212,9 @@ class Atem:
 
     # sends a datagram to the switcher
     def sendDatagram (self, datagram) :
-        print('sending packet')
-        dumpHex(datagram)
-        self.socket.sendto (datagram, self.address)
+        #print('sending packet')
+        #dumpHex(datagram)
+        self.socket.sendto(datagram, self.address)
 
     def parseBitmask(self, num, labels):
         states = {}
