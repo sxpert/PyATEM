@@ -96,6 +96,9 @@ class Atem:
 
         self.state['program']['booted'] = True
 
+        self.tallyHandler = None
+        self.pgmInputHandler = None
+
     # hello packet
     def connectToSwitcher(self):
         datagram = self.createCommandHeader(self.CMD_HELLOPACKET, 8, self.currentUid, 0x0)
@@ -314,6 +317,7 @@ class Atem:
     def recvPrgI(self, data):
         meIndex = data[0]
         self.state['program'][meIndex] = struct.unpack('!H', data[2:4])[0]
+        self.pgmInputHandler(self)
 
     def recvPrvI(self, data):
         meIndex = data[0]
@@ -497,12 +501,14 @@ class Atem:
         src_count = struct.unpack('!H', data[0:2])[0]
         for i in range(2, src_count+2):
             self.state['tally_by_index'][i] = self.parseBitmask(data[i], ['pgm', 'prv'])
+        self.tallyHandler(self)
 
     def recvTlSr(self, data):
         src_count = struct.unpack('!H', data[0:2])[0]
         for i in range(2, src_count*3+2):
             source = struct.unpack('!H', data[i:i+2])[0]
             self.state['tally'][source] = self.parseBitmask(data[i+2], ['pgm', 'prv'])
+        self.tallyHandler(self)
 
     def recvTime(self, data):
         self.state['last_state_change'] = struct.unpack('!BBBB', data[0:4])
@@ -536,5 +542,13 @@ if __name__ == '__main__':
     import config
     a = Atem(config.address)
     a.connectToSwitcher()
+    def tallyWatch(atem):
+        print("Tally changed")
+        pprint(atem.state['tally'])
+    def inputWatch(atem):
+        print("PGM input changed")
+        pprint(atem.state['program'])
+    a.tallyHandler = tallyWatch
+    a.pgmInputHandler = inputWatch
     while True:
         a.waitForPacket()
