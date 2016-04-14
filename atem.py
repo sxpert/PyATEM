@@ -6,6 +6,7 @@ import socket
 import struct
 import collections
 import ctypes
+import time
 from pprint import pprint
 
 
@@ -123,9 +124,11 @@ class Atem:
             elif (header['bitmask'] & self.CMD_ACKREQUEST) and\
                  (self.isInitialized or len(datagram) == self.SIZE_OF_HEADER):
                 #print('initialized, received ACKREQUEST, sending ACK packet')
+                #print("Sending ACK for packageId %d" % header['packageId'])
                 ackDatagram = self.createCommandHeader(self.CMD_ACK, 0, header['uid'], header['packageId'])
                 self.sendDatagram(ackDatagram)
-                self.isInitialized = True
+                if not self.isInitialized:
+                    self.isInitialized = True
             
             if len(datagram) > self.SIZE_OF_HEADER + 2 and not (header['bitmask'] & self.CMD_HELLOPACKET):
                 self.parsePayload(datagram)
@@ -135,7 +138,7 @@ class Atem:
     def waitForPacket(self):
         #print(">>> waiting for packet")
         while not self.handleSocketData():
-            pass
+            time.sleep(0.01)
         #print(">>> packet obtained")
 
     # generates packet header data
