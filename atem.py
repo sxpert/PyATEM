@@ -500,7 +500,7 @@ class Atem:
     def recvTlIn(self, data):
         src_count = struct.unpack('!H', data[0:2])[0]
         for i in range(2, src_count+2):
-            self.state['tally_by_index'][i] = self.parseBitmask(data[i], ['pgm', 'prv'])
+            self.state['tally_by_index'][str(i-1)] = self.parseBitmask(data[i], ['pgm', 'prv'])
         self.tallyHandler(self)
 
     def recvTlSr(self, data):
@@ -545,6 +545,7 @@ if __name__ == '__main__':
     def tallyWatch(atem):
         print("Tally changed")
         pprint(atem.state['tally'])
+        pprint(atem.state['tally_by_index'])
     def inputWatch(atem):
         print("PGM input changed")
         pprint(atem.state['program'])
