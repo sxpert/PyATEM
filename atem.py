@@ -500,14 +500,14 @@ class Atem:
     def recvTlIn(self, data):
         src_count = struct.unpack('!H', data[0:2])[0]
         for i in range(2, src_count+2):
-            self.state['tally_by_index'][str(i-1)] = self.parseBitmask(data[i], ['pgm', 'prv'])
+            self.state['tally_by_index'][str(i-1)] = self.parseBitmask(data[i], ['prv', 'pgm'])
         self.tallyHandler(self)
 
     def recvTlSr(self, data):
         src_count = struct.unpack('!H', data[0:2])[0]
         for i in range(2, src_count*3+2):
             source = struct.unpack('!H', data[i:i+2])[0]
-            self.state['tally'][source] = self.parseBitmask(data[i+2], ['pgm', 'prv'])
+            self.state['tally'][source] = self.parseBitmask(data[i+2], ['prv', 'pgm'])
         self.tallyHandler(self)
 
     def recvTime(self, data):
