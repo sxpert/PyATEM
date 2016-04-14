@@ -110,7 +110,7 @@ class Atem:
         except socket.error:
             return False
         datagram, server = d
-        print('received datagram')
+        #print('received datagram')
         header = self.parseCommandHeader(datagram)
         if header:
             self.currentUid = header['uid']
@@ -166,7 +166,7 @@ class Atem:
             header['uid'] = struct.unpack('!H',datagram[2:4])[0]
             header['ackId'] = struct.unpack('!H',datagram[4:6])[0]
             header['packageId']=struct.unpack('!H',datagram[10:12])[0]
-            print(header)
+            #print(header)
             return header
         return False
 
