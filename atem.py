@@ -6,6 +6,7 @@ import socket
 import struct
 import collections
 import ctypes
+from pprint import pprint
 
 
 def dumpHex (buffer):
@@ -44,18 +45,18 @@ class Atem:
                          '720p50', '720p59.94', '1080i50', '1080i59.94',
                          '1080p23.98', '1080p24', '1080p25', '1080p29.97', '1080p50', '1080p59.94',
                          '2160p23.98', '2160p24', '2160p25', '2160p29.97']
-    LABELS_PORTS_EXTERNAL = {0:'SDI', 1:'HDMI', 2:'Component', 3:'Composite', 4:'SVideo'}
-    LABELS_PORTS_INTERNAL = {0:'External', 1:'Black', 2:'Color Bars', 3:'Color Generator', 4:'Media Player Fill',
-                             5:'Media Player Key', 6:'SuperSource', 128:'ME Output', 129:'Auxilary', 130:'Mask'}
+    LABELS_PORTS_EXTERNAL = {0: 'SDI', 1: 'HDMI', 2: 'Component', 3: 'Composite', 4: 'SVideo'}
+    LABELS_PORTS_INTERNAL = {0: 'External', 1: 'Black', 2: 'Color Bars', 3: 'Color Generator', 4: 'Media Player Fill',
+                             5: 'Media Player Key', 6: 'SuperSource', 128: 'ME Output', 129: 'Auxilary', 130: 'Mask'}
     LABELS_MULTIVIEWER_LAYOUT = ['top', 'bottom', 'left', 'right']
     LABELS_AUDIO_PLUG = ['Internal', 'SDI', 'HDMI', 'Component', 'Composite', 'SVideo', 'XLR', 'AES/EBU', 'RCA']
     LABELS_VIDEOSRC = { 0: 'Black', 1: 'Input 1', 2: 'Input 2', 3: 'Input 3', 4: 'Input 4', 5: 'Input 5', 6: 'Input 6', 7: 'Input 7', 8: 'Input 8', 9: 'Input 9', 10: 'Input 10', 11: 'Input 11', 12: 'Input 12', 13: 'Input 13', 14: 'Input 14', 15: 'Input 15', 16: 'Input 16', 17: 'Input 17', 18: 'Input 18', 19: 'Input 19', 20: 'Input 20', 1000: 'Color Bars', 2001: 'Color 1', 2002: 'Color 2', 3010: 'Media Player 1', 3011: 'Media Player 1 Key', 3020: 'Media Player 2', 3021: 'Media Player 2 Key', 4010: 'Key 1 Mask', 4020: 'Key 2 Mask', 4030: 'Key 3 Mask', 4040: 'Key 4 Mask', 5010: 'DSK 1 Mask', 5020: 'DSK 2 Mask', 6000: 'Super Source', 7001: 'Clean Feed 1', 7002: 'Clean Feed 2', 8001: 'Auxilary 1', 8002: 'Auxilary 2', 8003: 'Auxilary 3', 8004: 'Auxilary 4', 8005: 'Auxilary 5', 8006: 'Auxilary 6', 10010: 'ME 1 Prog', 10011: 'ME 1 Prev', 10020: 'ME 2 Prog', 10021: 'ME 2 Prev' }
     LABELS_AUDIOSRC = { 1: 'Input 1', 2: 'Input 2', 3: 'Input 3', 4: 'Input 4', 5: 'Input 5', 6: 'Input 6', 7: 'Input 7', 8: 'Input 8', 9: 'Input 9', 10: 'Input 10', 11: 'Input 11', 12: 'Input 12', 13: 'Input 13', 14: 'Input 14', 15: 'Input 15', 16: 'Input 16', 17: 'Input 17', 18: 'Input 18', 19: 'Input 19', 20: 'Input 20', 1001: 'XLR', 1101: 'AES/EBU', 1201: 'RCA', 2001: 'MP1', 2002: 'MP2' }
     # cc
-    LABELS_CC_DOMAIN = {0:'lens', 1:'camera', 8:'chip'}
-    LABELS_CC_LENS_FEATURE = {0:'focus', 1:'auto_focused', 3:'iris', 9:'zoom'}
-    LABELS_CC_CAM_FEATURE = {1:'gain', 2:'white_balance', 5:'shutter'}
-    LABELS_CC_CHIP_FEATURE = {0:'lift', 1:'gamma', 2:'gain', 3:'aperture', 4:'contrast', 5:'luminance', 6:'hue-saturation'}
+    LABELS_CC_DOMAIN = {0: 'lens', 1: 'camera', 8: 'chip'}
+    LABELS_CC_LENS_FEATURE = {0: 'focus', 1: 'auto_focused', 3: 'iris', 9: 'zoom'}
+    LABELS_CC_CAM_FEATURE = {1: 'gain', 2: 'white_balance', 5: 'shutter'}
+    LABELS_CC_CHIP_FEATURE = {0: 'lift', 1: 'gamma', 2: 'gain', 3: 'aperture', 4: 'contrast', 5: 'luminance', 6: 'hue-saturation'}
 
     # value options
     VALUES_CC_GAIN = {512: '0db', 1024: '6db', 2048: '12db', 4096: '18db'}
@@ -115,25 +116,27 @@ class Atem:
             self.currentUid = header['uid']
             
             if header['bitmask'] & self.CMD_HELLOPACKET :
-                print('not initialized, received HELLOPACKET, sending ACK packet')
+                #print('not initialized, received HELLOPACKET, sending ACK packet')
                 self.isInitialized = False
                 ackDatagram = self.createCommandHeader (self.CMD_ACK, 0, header['uid'], 0x0)
                 self.sendDatagram (ackDatagram)
-            elif self.isInitialized and (header['bitmask'] & self.CMD_ACKREQUEST) :
-                print('initialized, received ACKREQUEST, sending ACK packet')
-                ackDatagram = self.createCommandHeader (self.CMD_ACK, 0, header['uid'], header['packageId'])
-                self.sendDatagram (ackDatagram)
+            elif (header['bitmask'] & self.CMD_ACKREQUEST) and\
+                 (self.isInitialized or len(datagram) == self.SIZE_OF_HEADER):
+                #print('initialized, received ACKREQUEST, sending ACK packet')
+                ackDatagram = self.createCommandHeader(self.CMD_ACK, 0, header['uid'], header['packageId'])
+                self.sendDatagram(ackDatagram)
+                self.isInitialized = True
             
-            if len(datagram) > self.SIZE_OF_HEADER + 2 and not (header['bitmask'] & self.CMD_HELLOPACKET) :
-                self.parsePayload (datagram)
+            if len(datagram) > self.SIZE_OF_HEADER + 2 and not (header['bitmask'] & self.CMD_HELLOPACKET):
+                self.parsePayload(datagram)
 
         return True        
 
     def waitForPacket(self):
-        print(">>> waiting for packet")
+        #print(">>> waiting for packet")
         while not self.handleSocketData():
             pass
-        print(">>> packet obtained")
+        #print(">>> packet obtained")
 
     # generates packet header data
     def createCommandHeader (self, bitmask, payloadSize, uid, ackId):
@@ -167,7 +170,7 @@ class Atem:
             return header
         return False
 
-    def parsePayload (self, datagram):
+    def parsePayload(self, datagram):
         print('parsing payload')
         # eat up header
         datagram = datagram[self.SIZE_OF_HEADER:]
@@ -515,10 +518,10 @@ class Atem:
         return  # todo: return range/list of options for the given attribute name path
 
     def dump(self):
-        print(self.system_config)
-        print(self.status)
-        print(self.state)
-        print(self.cameracontrol)
+        pprint(self.system_config)
+        pprint(self.status)
+        pprint(self.state)
+        pprint(self.cameracontrol)
 
 
 def init(a):
