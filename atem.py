@@ -94,7 +94,7 @@ class Atem:
         }
         self.cameracontrol = {}
 
-        self.state['program']['booted'] = True
+        self.state['booted'] = True
 
         self.tallyHandler = None
         self.pgmInputHandler = None
